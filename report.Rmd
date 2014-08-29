@@ -1,0 +1,131 @@
+# Impact of severe weather events on people life, health and property
+
+## Synopsis
+
+The goal of the report is to find out negative impact of weather extreme events on peoples life, health and on property.
+
+## Data processing
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage. The data is available for years from 1950 to 2011.
+
+Loading data:
+
+```{r echo=TRUE, cache=TRUE}
+# Load data
+data <- read.csv('repdata_data_StormData.csv.bz2')
+```
+
+The data in **EVENT_TYPE** column is not very clear: it has some duplicates like "FLASH FLOOD" and "FLASH FLOODING", and also misspells like "AVALANCE" instead of "AVALANCHE". Following code fixes these and some more duplicates. All events containing "FLOOD" in name are considered as flood events, all events containins "LIGHTNING" in name are considered as lightning event, etc. This approach does not fix all of the event names, however for our analyzes only few and most impactible are needed, which are filtered by following code
+
+```{r echo=TRUE, cache=TRUE}
+# Filter data
+data$EVTYPE_FILTERED <- toupper(data$EVTYPE)
+data$EVTYPE_FILTERED <- sub("TSTM", "THUNDERSTORM", data$EVTYPE_FILTERED)
+data$EVTYPE_FILTERED <- sub("AVALANCE", "AVALANCHE", data$EVTYPE_FILTERED)
+data$EVTYPE_FILTERED <- sub("TORNDAO", "TORNADO", data$EVTYPE_FILTERED)
+
+data$EVTYPE_FILTERED[grepl("AVALANCHE", data$EVTYPE_FILTERED)] <- "AVALANCHE"
+data$EVTYPE_FILTERED[grepl("LIGHTNING", data$EVTYPE_FILTERED)] <- "LIGHTNING"
+data$EVTYPE_FILTERED[grepl("HURRICANE", data$EVTYPE_FILTERED)] <- "HURRICANE"
+data$EVTYPE_FILTERED[grepl("STORM SURGE", data$EVTYPE_FILTERED)] <- "HURRICANE"
+data$EVTYPE_FILTERED[grepl("FLOOD", data$EVTYPE_FILTERED)] <- "FLOOD"
+data$EVTYPE_FILTERED[grepl("RIP CURRENT", data$EVTYPE_FILTERED)] <- "RIP CURRENT"
+data$EVTYPE_FILTERED[grepl("HAIL", data$EVTYPE_FILTERED)] <- "HAIL"
+data$EVTYPE_FILTERED[grepl("THUNDERSTORM", data$EVTYPE_FILTERED)] <- "THUNDERSTORM"
+data$EVTYPE_FILTERED[grepl("COLD", data$EVTYPE_FILTERED)] <- "COLD"
+data$EVTYPE_FILTERED[grepl("HEAT", data$EVTYPE_FILTERED)] <- "HEAT"
+data$EVTYPE_FILTERED[grepl("SURF", data$EVTYPE_FILTERED)] <- "SURF"
+data$EVTYPE_FILTERED[grepl("BLIZZARD", data$EVTYPE_FILTERED)] <- "BLIZZARD"
+data$EVTYPE_FILTERED[grepl("RAIN", data$EVTYPE_FILTERED)] <- "RAIN"
+data$EVTYPE_FILTERED[grepl("SNOW", data$EVTYPE_FILTERED)] <- "SNOW"
+data$EVTYPE_FILTERED[grepl("FROST", data$EVTYPE_FILTERED)] <- "FROST"
+data$EVTYPE_FILTERED[grepl("HIGH WIND", data$EVTYPE_FILTERED) | grepl("STRONG WIND", data$EVTYPE_FILTERED)] <- "HIGH WIND"
+data$EVTYPE_FILTERED <- with(data, paste(toupper(substring(EVTYPE_FILTERED, 1, 1)), tolower(substring(EVTYPE_FILTERED, 2)), sep=''))
+```
+
+Other thing to do is to convert property damage estimates to proper values. These values are stored in columns **PROPDMG** and **PROPDMGEXP** and not very clean. **PROPDMG** contains base value and **PROPDMGEXP** contains exponential part and it's not always correct. I consider only values "k", "m" and "b" (and their upper-case analogs) as proper values and discard other values. Also I do the same changes for **CROPDMG** and **CROPDMGEXP** columns which are analogoues to property damage columns but are corresponds to crops damage.
+
+```{r echo=TRUE, cache=TRUE}
+data$PROPDMGEXP <- tolower(data$PROPDMGEXP)
+data$CROPDMGEXP <- tolower(data$CROPDMGEXP)
+
+data$PROPDMG_FILTERED <- data$PROPDMG
+data$PROPDMG_FILTERED[data$PROPDMGEXP == "k"] <- data$PROPDMG_FILTERED[data$PROPDMGEXP == "k"] * 1000
+data$PROPDMG_FILTERED[data$PROPDMGEXP == "m"] <- data$PROPDMG_FILTERED[data$PROPDMGEXP == "m"] * 1000000
+data$PROPDMG_FILTERED[data$PROPDMGEXP == "b"] <- data$PROPDMG_FILTERED[data$PROPDMGEXP == "b"] * 1000000000
+
+data$CROPDMG_FILTERED <- data$CROPDMG
+data$CROPDMG_FILTERED[data$CROPDMGEXP == "k"] <- data$CROPDMG_FILTERED[data$CROPDMGEXP == "k"] * 1000
+data$CROPDMG_FILTERED[data$CROPDMGEXP == "m"] <- data$CROPDMG_FILTERED[data$CROPDMGEXP == "m"] * 1000000
+data$CROPDMG_FILTERED[data$CROPDMGEXP == "b"] <- data$CROPDMG_FILTERED[data$CROPDMGEXP == "b"] * 1000000000
+```
+
+## Aggregating data
+
+Following code sums up number of fatalities and injuries.
+
+```{r echo=TRUE, cache=TRUE}
+casaulties_by_evtype <- with(data, aggregate(cbind(FATALITIES, INJURIES) ~ EVTYPE_FILTERED, FUN=sum))
+
+death_by_evtype.sorted <- casaulties_by_evtype[order(-casaulties_by_evtype$FATALITIES),]
+death_by_evtype.first <- death_by_evtype.sorted[1:10,]
+
+injuries_by_evtype.sorted <- casaulties_by_evtype[order(-casaulties_by_evtype$INJURIES),]
+injuries_by_evtype.first <- injuries_by_evtype.sorted[1:10,]
+
+death_total <- sum(data$FATALITIES)
+injuries_total <- sum(data$INJURIES)
+```
+
+## Property and crop damage caused by severe weather events
+
+Following code sums up total property and crop damage across US grouping by event type. Property and crop damage is combined to one column as we don't need to analyze difference between property and crop damage in this report.
+
+```{r echo=TRUE, cache=TRUE}
+dmg_by_evtype <- with(data, aggregate(cbind(PROPDMG_FILTERED, CROPDMG_FILTERED) ~ EVTYPE_FILTERED, FUN=sum))
+
+dmg_by_evtype$TOTAL_DMG <- dmg_by_evtype$PROPDMG_FILTERED + dmg_by_evtype$CROPDMG_FILTERED
+
+dmg_by_evtype.sorted <- dmg_by_evtype[order(-dmg_by_evtype$TOTAL_DMG),]
+dmg_by_evtype.first <- dmg_by_evtype.sorted[1:10,]
+
+dmg_total <- sum(data$PROPDMG_FILTERED + data$CROPDMG_FILTERED)
+```
+
+## Results
+
+### Deathes and injuries
+
+```{r echo=TRUE, fig.width=9}
+library(ggplot2)
+library(gridExtra)
+# setting factors to order stacks on graph (ggplot converts character variables to factors and sorts by factor levels, which is by default alphabeticall)
+death_by_evtype.first$EVTYPE_FILTERED <- factor(death_by_evtype.first$EVTYPE_FILTERED, levels=rev(death_by_evtype.first$EVTYPE_FILTERED))
+plot1 <- ggplot(death_by_evtype.first, aes(y=FATALITIES, x=EVTYPE_FILTERED)) + geom_bar(stat="identity", fill="brown") + ylab("Fatalities") + xlab("") + coord_flip() + theme_bw()
+
+injuries_by_evtype.first$EVTYPE_FILTERED <- factor(injuries_by_evtype.first$EVTYPE_FILTERED, levels=rev(injuries_by_evtype.first$EVTYPE_FILTERED))
+plot2 <- ggplot(injuries_by_evtype.first, aes(y=INJURIES, x=EVTYPE_FILTERED)) + geom_bar(stat="identity", fill="dark green") + ylab("Injuries") + xlab("") + coord_flip() + theme_bw()
+grid.arrange(plot1, plot2, ncol=2, main="Fatalities and injuries caused by severe weather events in US")
+
+most_severe_death_percentage <- round(death_by_evtype.first$FATALITIES[1] / death_total * 100)
+most_severe_injury_percentage <- round(injuries_by_evtype.first$INJURIES[1] / injuries_total * 100)
+```
+
+Tornado caused the most deathes and most injuries, of overall deathes caused by weather events tornado took ```r most_severe_death_percentage```%, of overall injuries it took ```r most_severe_injury_percentage```%.
+
+### Property and crop damage
+
+```{r echo=TRUE, fig.width=9}
+library(ggplot2)
+library(gridExtra)
+# setting factors to order stacks on graph (ggplot converts character variables to factors and sorts by factor levels, which is by default alphabeticall)
+dmg_by_evtype.first$EVTYPE_FILTERED <- factor(dmg_by_evtype.first$EVTYPE_FILTERED, levels=rev(dmg_by_evtype.first$EVTYPE_FILTERED))
+plot1 <- ggplot(dmg_by_evtype.first, aes(y=TOTAL_DMG / (10 ^ 9), x=EVTYPE_FILTERED)) + geom_bar(stat="identity", fill="brown") + ylab("Property and crop damage (in billions of dollars)") + xlab("") + ggtitle("Economics damage caused by severe weather events in US") + coord_flip() + theme_bw()
+plot1
+
+most_severe_percentage <- round(dmg_by_evtype.first$TOTAL_DMG[1] / dmg_total * 100)
+second_severe_percentage <- round(dmg_by_evtype.first$TOTAL_DMG[2] / dmg_total * 100)
+third_severe_percentage <- round(dmg_by_evtype.first$TOTAL_DMG[3] / dmg_total * 100)
+```
+
+In this case most severe event is Flood, caused ```r most_severe_percentage```% of all damage. Right after it goes Hurricane with ```r second_severe_percentage```%, and Tornado goes on third place with ```r third_severe_percentage```% of all damage caused by severe weather events.
